@@ -1,45 +1,49 @@
+import {
+  maxResultsOnHome,
+  minResultsOnHome,
+  titleIndicator,
+} from './constants';
 import { Category } from './mockedApi';
 import type { CategoryListElement, GetCategories } from './types';
-import { compareByOrder } from './utils/sort';
 
 const markCategoriesToShowOnHome = (
   result: CategoryListElement[],
   toShowOnHome: number[]
 ): void => {
-  if (result.length <= 5) {
-    result.forEach((a) => (a.showOnHome = true));
-  } else if (toShowOnHome.length > 0) {
-    result.forEach((x) => (x.showOnHome = toShowOnHome.includes(x.id)));
-  } else {
-    result.forEach((x, index) => (x.showOnHome = index < 3));
-  }
+  const shouldShowOnHome = (categoryId: number, index: number): boolean => {
+    if (result.length <= maxResultsOnHome) return true;
+    if (toShowOnHome.length > 0) return toShowOnHome.includes(categoryId);
+    return index < minResultsOnHome;
+  };
+
+  result.forEach((category, index) => {
+    category.showOnHome = shouldShowOnHome(category.id, index);
+  });
 };
 
-export const categoryTree = async (
-  getCategories: GetCategories
-): Promise<CategoryListElement[]> => {
-  const res = await getCategories();
+const compareByOrder = (
+  a: CategoryListElement,
+  b: CategoryListElement
+): number => a.order - b.order;
 
-  if (!res.data) {
-    return [];
-  }
-
+const getCategoryTree = (data: Category[]) => {
   const toShowOnHome: number[] = [];
 
   const getOrder = (title: string, id: number): number => {
-    const hasHash = title.includes('#');
-    const orderPart = hasHash ? title.split('#')[0] : title;
+    const hasIndicator = title.includes(titleIndicator);
+    const orderPart = hasIndicator ? title.split(titleIndicator)[0] : title;
 
-    if (hasHash) toShowOnHome.push(id);
+    if (hasIndicator) toShowOnHome.push(id);
 
     const order = parseInt(orderPart);
     return isNaN(order) ? id : order;
   };
 
-  const mapCategoryToElement = (child: Category): CategoryListElement => {
+  const mapCategories = (child: Category): CategoryListElement => {
     const { children = [], MetaTagDescription, name, Title, id } = child;
+
     return {
-      children: children.map(mapCategoryToElement).sort(compareByOrder),
+      children: children.map(mapCategories).sort(compareByOrder),
       image: MetaTagDescription,
       showOnHome: false,
       id,
@@ -48,9 +52,23 @@ export const categoryTree = async (
     };
   };
 
-  const result = res.data.map(mapCategoryToElement).sort(compareByOrder);
+  const result = data.map(mapCategories).sort(compareByOrder);
 
   markCategoriesToShowOnHome(result, toShowOnHome);
-
   return result;
+};
+
+export const categoryTree = async (
+  getCategories: GetCategories
+): Promise<CategoryListElement[]> => {
+  try {
+    const res = await getCategories();
+    if (!res.data) {
+      return [];
+    }
+
+    return getCategoryTree(res.data);
+  } catch (error) {
+    return [];
+  }
 };
